@@ -1,0 +1,50 @@
+One day, I was asked to do root cause analysis on a networking problem on our test cloud. The cloud has just upgraded itself, and we need to make sure that network traffics still works, but there was something unusual.
+
+## A little bit of backgroud 
+
+I work for Huawei's private cloud department, Huawei Cloud Stack (HCS). I am responsible for a network component, which we call vRouter. Many types of traffics comes into the vRouter, and then gets transferred to its destination. To do that, vRouter gets Kafka messages from the controller (when the user makes resource changes), and create virtual flows such as OpenFlow and eGF route (Huawei stuff). The virtual flows and routes will match the traffic, and base on what controller has told vRouter, decide where to transfer the traffic.
+
+For example, a kafka message could contain something like this: create resource "route table" A with destination "192.168.1.0/24" nexthop equal to a virtual machine's port UUID. Then vRouter knows to create a virtual flow that directs any traffic that comes from route table A, going to 192.168.1.0/24, to the virtual machine's port. The kafka message itself, and the act of creating virtual flows, is on the management plane. Management plane create virtual resources, just like a network administrator creates routes. When there comes any traffic that matches, the actual transferring is done by virtual flows. Just like how linux transfers packets with routes, linux also transfer packets with OpenFlow and eGF. This is the data plane.
+
+There are 2 vRouters on a typical HCS environment. Both of them accepts the same Kafka messages, and do the exact same thing in the management plane. Traffics are load-balanced so they could go to either of the vRouters.
+
+When vRouter starts, it tries to make up for all the missing messages by reaching database for information. According to what it sees in the database, it manages the virtual resources. Then, it continues to accept all messages from there.
+
+## Back to the probem
+
+We created 2 old virtual machines, and created traffic between them. Say virtual machine A has ip 1.0.0.3/24, and virtual machine B has ip 2.0.0.3/24. We setted up the network so they could communicate. It was working until we create 2 new virtual machines C with ip 1.0.0.4/24 and D with ip 1.0.0.5/24. We want both of them to communicate with B, but C failed, D worked. I was asked to identity what is going on.
+
+## My observation
+
+I started with checking the flows. Because the flows could go into either one of the vRouters, I had to check for both. I found that the problematic traffic was sent to vRouter 1, and then dropped. This usually means the virtual resources aren't setup correctly. I then verified that some virtual flows are missing, so the traffic can't be handled, it is then dropped.
+
+Why there aren't virtual flows? I checked the logs, and found that the Kafka message never reached vRouter 1. I checked the Kafka topic, and found tons of messages aren't being processed. This means that vRouter 1 "never got the memo", so naturally no virtual flows. But wait, why is virtual machine D working fine while virutal machine C failed?
+
+I talked to the guy in charge of Kafka. I thought there is probably something wrong with the Kafka, so it isn't sending messages. After closer look, it was not what I thought. vRouter 2 was accepting messages just fine. I created another Kafka consumer with the exact same setting as vRouter 1 (except a different group ID), and it was accepting just fine. The problem wasn't Kafka.
+
+With no clue, I restarted vRouter 1. The traffic became normal. vRouter was accepting messages again. It was working fine.
+
+I checked the log, and found that vRouter weren't accepting messages for a while. It started when Kafka upgraded and restarted. However, Kafka was back after a while, and vRouter reconnected with Kafka. Still no messages was processed.
+
+Ok, even more confused!
+
+## Solving the problem
+
+### Why did virtual machine C fail, when virtual machine D worked? If vRouter failed after a certain point, then both of them should fail!
+
+Traffic C to B went into vRouter 1, so it failed. Traffic D to B went into vRouter 2, which is fine. We configure our switches so that traffics are load balanced into both vRouter.
+
+### Why did old traffics work while some new traffic failed?
+
+Traffic A to B worked fined because the virtual flows that it depends on was always correct and nothing changed it. We designed our components so that when there is a management plane failure, the data planes gets minimal damage.
+
+### Why did vRouter 1 stopped accepting Kafka messages? What triggered it?
+
+I found that it stopped working even after reconnecting to Kafka. So I tried to reproduce it by disconnecting vRouter and reconnect. I added an log, and injected an error so that it can immedately disconnect. Surprisingly, when vRouter reconnects, it starts a new consumer, but because of some old bug, it didn't subscribe to any topic. Without any subscription, it wouldn't receive any messages.
+
+Since it is unusual that it ever gets into this part of code. Before I was in charge of vRouter, people ignored it. I didn't let it slip, and looked into it really hard, and found the root of the bug.
+
+### Why restarting vRouter fixed it?
+
+By restarting vRouter, it would never reach the buggy code. The bug can only be triggered by reconnecting to Kafka. All resources can be found on the database, which vRouter can access.
+
